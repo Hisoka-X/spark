@@ -39,6 +39,7 @@ import scala.reflect.{classTag, ClassTag}
 import scala.sys.process.{Process, ProcessLogger}
 import scala.util.Try
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.google.common.io.{ByteStreams, Files}
 import org.apache.commons.lang3.StringUtils
 import org.apache.logging.log4j.LogManager
@@ -50,8 +51,6 @@ import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.handler.DefaultHandler
 import org.eclipse.jetty.server.handler.HandlerList
 import org.eclipse.jetty.server.handler.ResourceHandler
-import org.json4s.JsonAST.JValue
-import org.json4s.jackson.JsonMethods.{compact, render}
 
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.scheduler._
@@ -476,9 +475,9 @@ private[spark] object TestUtils {
   }
 
   /** Creates a temp JSON file that contains the input JSON record. */
-  def createTempJsonFile(dir: File, prefix: String, jsonValue: JValue): String = {
+  def createTempJsonFile(dir: File, prefix: String, jsonValue: JsonNode): String = {
     val file = File.createTempFile(prefix, ".json", dir)
-    JavaFiles.write(file.toPath, compact(render(jsonValue)).getBytes())
+    JavaFiles.write(file.toPath, jsonValue.toString.getBytes())
     file.getPath
   }
 

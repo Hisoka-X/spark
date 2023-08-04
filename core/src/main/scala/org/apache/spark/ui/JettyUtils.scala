@@ -26,6 +26,8 @@ import scala.language.implicitConversions
 import scala.util.Try
 import scala.xml.Node
 
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.eclipse.jetty.client.HttpClient
 import org.eclipse.jetty.client.api.Response
 import org.eclipse.jetty.client.http.HttpClientTransportOverHTTP
@@ -36,8 +38,6 @@ import org.eclipse.jetty.server.handler.gzip.GzipHandler
 import org.eclipse.jetty.servlet._
 import org.eclipse.jetty.util.component.LifeCycle
 import org.eclipse.jetty.util.thread.{QueuedThreadPool, ScheduledExecutorScheduler}
-import org.json4s.JValue
-import org.json4s.jackson.JsonMethods.{pretty, render}
 
 import org.apache.spark.{SecurityManager, SparkConf, SSLOptions}
 import org.apache.spark.internal.Logging
@@ -60,9 +60,11 @@ private[spark] object JettyUtils extends Logging {
     val contentType: String,
     val extractFn: T => String = (in: Any) => in.toString) {}
 
+  private val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+
   // Conversions from various types of Responder's to appropriate servlet parameters
-  implicit def jsonResponderToServlet(responder: Responder[JValue]): ServletParams[JValue] =
-    new ServletParams(responder, "text/json", (in: JValue) => pretty(render(in)))
+  implicit def jsonResponderToServlet(responder: Responder[JsonNode]): ServletParams[JsonNode] =
+    new ServletParams(responder, "text/json", (in: JsonNode) => in.toPrettyString)
 
   implicit def htmlResponderToServlet(responder: Responder[Seq[Node]]): ServletParams[Seq[Node]] =
     new ServletParams(responder, "text/html", (in: Seq[Node]) => "<!DOCTYPE html>" + in.toString)

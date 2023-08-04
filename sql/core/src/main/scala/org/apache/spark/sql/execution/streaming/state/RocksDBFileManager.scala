@@ -28,14 +28,12 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 import com.fasterxml.jackson.annotation.JsonInclude.Include
-import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
+import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper, SerializationFeature}
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.module.scala.{ClassTagExtensions, DefaultScalaModule}
 import org.apache.commons.io.{FilenameUtils, IOUtils}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileStatus, Path, PathFilter}
-import org.json4s.NoTypeHints
-import org.json4s.jackson.Serialization
 
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.internal.Logging
@@ -682,7 +680,8 @@ case class RocksDBCheckpointMetadata(
     mapper.writeValueAsString(nullified)
   }
 
-  def prettyJson: String = Serialization.writePretty(this)(RocksDBCheckpointMetadata.format)
+  def prettyJson: String = mapper.writer(SerializationFeature.INDENT_OUTPUT)
+    .writeValueAsString(this)
 
   def writeToFile(metadataFile: File): Unit = {
     val writer = Files.newBufferedWriter(metadataFile.toPath, UTF_8)
@@ -701,8 +700,6 @@ case class RocksDBCheckpointMetadata(
 object RocksDBCheckpointMetadata {
   val VERSION = 1
 
-  implicit val format = Serialization.formats(NoTypeHints)
-
   /** Used to convert between classes and JSON. */
   lazy val mapper = {
     val _mapper = new ObjectMapper with ClassTagExtensions
@@ -719,7 +716,7 @@ object RocksDBCheckpointMetadata {
       if (versionLine != s"v$VERSION") {
         throw QueryExecutionErrors.cannotReadCheckpoint(versionLine, s"v$VERSION")
       }
-      Serialization.read[RocksDBCheckpointMetadata](reader)
+      mapper.readValue(reader, classOf[RocksDBCheckpointMetadata])
     } finally {
       reader.close()
     }

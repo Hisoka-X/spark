@@ -25,6 +25,8 @@ import java.util.concurrent.{CountDownLatch, Semaphore, TimeUnit}
 import scala.concurrent.duration._
 import scala.io.Source
 
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.google.common.io.Files
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
@@ -32,10 +34,10 @@ import org.apache.hadoop.io.{BytesWritable, LongWritable, Text}
 import org.apache.hadoop.mapred.TextInputFormat
 import org.apache.hadoop.mapreduce.lib.input.{TextInputFormat => NewTextInputFormat}
 import org.apache.logging.log4j.{Level, LogManager}
-import org.json4s.{DefaultFormats, Extraction}
 import org.scalatest.concurrent.Eventually
 import org.scalatest.matchers.must.Matchers._
 
+import org.apache.spark.SparkContextSuite.objectMapper
 import org.apache.spark.TestUtils._
 import org.apache.spark.executor.ExecutorExitCode
 import org.apache.spark.internal.config._
@@ -923,10 +925,11 @@ class SparkContextSuite extends SparkFunSuite with LocalSparkContext with Eventu
       val scriptPath = createTempScriptWithExpectedOutput(dir, "gpuDiscoveryScript",
         """{"name": "gpu","addresses":["5", "6"]}""")
 
-      implicit val formats = DefaultFormats
+      import scala.collection.JavaConverters._
       val gpusAllocated =
         ResourceAllocation(DRIVER_GPU_ID, Seq("0", "1", "8"))
-      val ja = Extraction.decompose(Seq(gpusAllocated))
+
+      val ja: JsonNode = objectMapper.valueToTree(Seq(gpusAllocated).asJava)
       val resourcesFile = createTempJsonFile(dir, "resources", ja)
 
       val conf = new SparkConf()
@@ -1426,4 +1429,5 @@ object SparkContextSuite {
   @volatile var taskKilled = false
   @volatile var taskSucceeded = false
   val semaphore = new Semaphore(0)
+  val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
 }

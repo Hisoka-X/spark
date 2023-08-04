@@ -51,7 +51,7 @@ import org.apache.spark.util.Utils.weakIntern
  *  - Any new JSON fields should be optional; use `jsonOption` when reading these fields
  *    in `*FromJson` methods.
  */
-private[spark] object JsonProtocol extends JsonUtils {
+private[spark] object JsonProtocol {
   // TODO: Remove this file and put JSON serialization into each individual class.
 
   /** ------------------------------------------------- *
@@ -59,7 +59,7 @@ private[spark] object JsonProtocol extends JsonUtils {
    * -------------------------------------------------- */
 
   def sparkEventToJsonString(event: SparkListenerEvent): String = {
-    toJsonString { generator =>
+    JsonUtils.toJsonString { generator =>
       writeSparkEventToJson(event, generator)
     }
   }
@@ -107,7 +107,7 @@ private[spark] object JsonProtocol extends JsonUtils {
       case resourceProfileAdded: SparkListenerResourceProfileAdded =>
         resourceProfileAddedToJson(resourceProfileAdded, g)
       case _ =>
-        mapper.writeValue(g, event)
+        JsonUtils.mapper.writeValue(g, event)
     }
   }
 
@@ -847,7 +847,7 @@ private[spark] object JsonProtocol extends JsonUtils {
   }
 
   def sparkEventFromJson(json: String): SparkListenerEvent = {
-    sparkEventFromJson(mapper.readTree(json))
+    sparkEventFromJson(JsonUtils.mapper.readTree(json))
   }
 
   def sparkEventFromJson(json: JsonNode): SparkListenerEvent = {
@@ -874,7 +874,7 @@ private[spark] object JsonProtocol extends JsonUtils {
       case `stageExecutorMetrics` => stageExecutorMetricsFromJson(json)
       case `blockUpdate` => blockUpdateFromJson(json)
       case `resourceProfileAdded` => resourceProfileAddedFromJson(json)
-      case other => mapper.readValue(json.toString, Utils.classForName(other))
+      case other => JsonUtils.mapper.readValue(json.toString, Utils.classForName(other))
         .asInstanceOf[SparkListenerEvent]
     }
   }

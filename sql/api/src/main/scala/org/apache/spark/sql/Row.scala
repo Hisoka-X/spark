@@ -25,9 +25,9 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.hashing.MurmurHash3
 
-import org.json4s.{JArray, JBool, JDecimal, JDouble, JField, JLong, JNull, JObject, JString}
-import org.json4s.JsonAST.JValue
-import org.json4s.jackson.JsonMethods.{compact, pretty, render}
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.databind.node.ArrayNode
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 import org.apache.spark.annotation.{Stable, Unstable}
 import org.apache.spark.sql.catalyst.expressions.GenericRow
@@ -531,14 +531,14 @@ trait Row extends Serializable {
    * @since 3.0
    */
   @Unstable
-  def json: String = compact(jsonValue)
+  def json: String = jsonValue.toString
 
   /**
    * The pretty (i.e. indented) JSON representation of this row.
    * @since 3.0
    */
   @Unstable
-  def prettyJson: String = pretty(render(jsonValue))
+  def prettyJson: String = jsonValue.toPrettyString
 
   /**
    * JSON representation of the row.
@@ -548,39 +548,41 @@ trait Row extends Serializable {
    *
    * @return the JSON representation of the row.
    */
-  private[sql] def jsonValue: JValue = {
+  private[sql] def jsonValue: JsonNode = {
     require(schema != null, "JSON serialization requires a non-null schema.")
 
     lazy val zoneId = SparkDateTimeUtils.getZoneId(SqlApiConf.get.sessionLocalTimeZone)
     lazy val dateFormatter = DateFormatter()
     lazy val timestampFormatter = TimestampFormatter(zoneId)
 
+    val mapper = new ObjectMapper().registerModule(DefaultScalaModule)
+
     // Convert an iterator of values to a json array
-    def iteratorToJsonArray(iterator: Iterator[_], elementType: DataType): JArray = {
-      JArray(iterator.map(toJson(_, elementType)).toList)
+    def iteratorToJsonArray(iterator: Iterator[_], elementType: DataType): ArrayNode = {
+      mapper.valueToTree(iterator.map(toJson(_, elementType)).toList.asJava)
     }
 
     // Convert a value to json.
-    def toJson(value: Any, dataType: DataType): JValue = (value, dataType) match {
-      case (null, _) => JNull
-      case (b: Boolean, _) => JBool(b)
-      case (b: Byte, _) => JLong(b)
-      case (s: Short, _) => JLong(s)
-      case (i: Int, _) => JLong(i)
-      case (l: Long, _) => JLong(l)
-      case (f: Float, _) => JDouble(f)
-      case (d: Double, _) => JDouble(d)
-      case (d: BigDecimal, _) => JDecimal(d)
-      case (d: java.math.BigDecimal, _) => JDecimal(d)
-      case (d: Decimal, _) => JDecimal(d.toBigDecimal)
-      case (s: String, _) => JString(s)
+    def toJson(value: Any, dataType: DataType): Any = (value, dataType) match {
+      case (null, _) => null
+      case (b: Boolean, _) => b
+      case (b: Byte, _) => b
+      case (s: Short, _) => s
+      case (i: Int, _) => i
+      case (l: Long, _) => l
+      case (f: Float, _) => f
+      case (d: Double, _) => d
+      case (d: BigDecimal, _) => d
+      case (d: java.math.BigDecimal, _) => d
+      case (d: Decimal, _) => d.toBigDecimal
+      case (s: String, _) => s
       case (b: Array[Byte], BinaryType) =>
-        JString(Base64.getEncoder.encodeToString(b))
-      case (d: LocalDate, _) => JString(dateFormatter.format(d))
-      case (d: Date, _) => JString(dateFormatter.format(d))
-      case (i: Instant, _) => JString(timestampFormatter.format(i))
-      case (t: Timestamp, _) => JString(timestampFormatter.format(t))
-      case (i: CalendarInterval, _) => JString(i.toString)
+        Base64.getEncoder.encodeToString(b)
+      case (d: LocalDate, _) => dateFormatter.format(d)
+      case (d: Date, _) => dateFormatter.format(d)
+      case (i: Instant, _) => timestampFormatter.format(i)
+      case (t: Timestamp, _) => timestampFormatter.format(t)
+      case (i: CalendarInterval, _) => i.toString
       case (a: Array[_], ArrayType(elementType, _)) =>
         iteratorToJsonArray(a.iterator, elementType)
       case (a: mutable.ArraySeq[_], ArrayType(elementType, _)) =>
@@ -588,30 +590,31 @@ trait Row extends Serializable {
       case (s: Seq[_], ArrayType(elementType, _)) =>
         iteratorToJsonArray(s.iterator, elementType)
       case (m: Map[String @unchecked, _], MapType(StringType, valueType, _)) =>
-        new JObject(m.toList.sortBy(_._1).map {
+        mapper.valueToTree(m.toList.sortBy(_._1).map {
           case (k, v) => k -> toJson(v, valueType)
-        })
+        }.asJava)
       case (m: Map[_, _], MapType(keyType, valueType, _)) =>
-        new JArray(m.iterator.map {
+        mapper.valueToTree(m.iterator.map {
           case (k, v) =>
-            new JObject("key" -> toJson(k, keyType) :: "value" -> toJson(v, valueType) :: Nil)
-        }.toList)
+            mapper.valueToTree(("key" -> toJson(k, keyType) :: "value" -> toJson(v, valueType)
+              :: Nil).toMap.asJava)
+        }.toList.asJava)
       case (row: Row, schema: StructType) =>
         var n = 0
-        val elements = new mutable.ListBuffer[JField]
+        val elements = new mutable.ListBuffer[(String, Any)]
         val len = row.length
         while (n < len) {
           val field = schema(n)
           elements += (field.name -> toJson(row(n), field.dataType))
           n += 1
         }
-        new JObject(elements.toList)
-      case (v: Any, udt: UserDefinedType[Any @unchecked]) =>
+        mapper.valueToTree(elements.toList.asJava)
+      case (v: Any, udt: UserDefinedType[Any@unchecked]) =>
         toJson(UDTUtils.toRow(v, udt), udt.sqlType)
       case _ =>
         throw new IllegalArgumentException(s"Failed to convert value $value " +
           s"(class of ${value.getClass}}) with the type of $dataType to JSON.")
     }
-    toJson(this, schema)
+    toJson(this, schema).asInstanceOf[JsonNode]
   }
 }

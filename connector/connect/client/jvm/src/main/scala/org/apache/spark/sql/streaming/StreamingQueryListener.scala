@@ -19,10 +19,8 @@ package org.apache.spark.sql.streaming
 
 import java.util.UUID
 
-import org.json4s.{JObject, JString}
-import org.json4s.JsonAST.JValue
-import org.json4s.JsonDSL.{jobject2assoc, pair2Assoc}
-import org.json4s.jackson.JsonMethods.{compact, render}
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 import org.apache.spark.annotation.Evolving
 
@@ -82,6 +80,8 @@ abstract class StreamingQueryListener extends Serializable {
 @Evolving
 object StreamingQueryListener extends Serializable {
 
+  private val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+
   /**
    * Base type of [[StreamingQueryListener]] events
    * @since 3.5.0
@@ -110,13 +110,14 @@ object StreamingQueryListener extends Serializable {
       extends Event
       with Serializable {
 
-    def json: String = compact(render(jsonValue))
+    def json: String = jsonValue.toString
 
-    private def jsonValue: JValue = {
-      ("id" -> JString(id.toString)) ~
-        ("runId" -> JString(runId.toString)) ~
-        ("name" -> JString(name)) ~
-        ("timestamp" -> JString(timestamp))
+    private def jsonValue: JsonNode = {
+      val node = objectMapper.createObjectNode()
+      node.put("id", id.toString)
+        .put("runId", runId.toString)
+        .put("name", name)
+        .put("timestamp", timestamp)
     }
   }
 
@@ -131,9 +132,10 @@ object StreamingQueryListener extends Serializable {
       extends Event
       with Serializable {
 
-    def json: String = compact(render(jsonValue))
+    def json: String = jsonValue.toString
 
-    private def jsonValue: JValue = JObject("progress" -> progress.jsonValue)
+    private def jsonValue: JsonNode = objectMapper.createObjectNode().set("progress",
+      progress.jsonValue)
   }
 
   /**
@@ -152,12 +154,13 @@ object StreamingQueryListener extends Serializable {
       extends Event
       with Serializable {
 
-    def json: String = compact(render(jsonValue))
+    def json: String = jsonValue.toString
 
-    private def jsonValue: JValue = {
-      ("id" -> JString(id.toString)) ~
-        ("runId" -> JString(runId.toString)) ~
-        ("timestamp" -> JString(timestamp))
+    private def jsonValue: JsonNode = {
+      objectMapper.createObjectNode()
+        .put("id", id.toString)
+        .put("runId", runId.toString)
+        .put("timestamp", timestamp)
     }
   }
 
@@ -190,13 +193,13 @@ object StreamingQueryListener extends Serializable {
       this(id, runId, exception, None)
     }
 
-    def json: String = compact(render(jsonValue))
+    def json: String = jsonValue.toString
 
-    private def jsonValue: JValue = {
-      ("id" -> JString(id.toString)) ~
-        ("runId" -> JString(runId.toString)) ~
-        ("exception" -> JString(exception.orNull)) ~
-        ("errorClassOnException" -> JString(errorClassOnException.orNull))
+    private def jsonValue: JsonNode = {
+      objectMapper.createObjectNode().put("id", id.toString)
+        .put("runId", runId.toString)
+        .put("exception", exception.orNull)
+        .put("errorClassOnException", errorClassOnException.orNull)
     }
   }
 }

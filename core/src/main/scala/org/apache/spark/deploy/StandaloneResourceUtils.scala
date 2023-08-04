@@ -23,8 +23,8 @@ import java.nio.file.Files
 import scala.collection.mutable
 import scala.util.control.NonFatal
 
-import org.json4s.{DefaultFormats, Extraction}
-import org.json4s.jackson.JsonMethods.{compact, render}
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 import org.apache.spark.SparkException
 import org.apache.spark.internal.Logging
@@ -32,6 +32,8 @@ import org.apache.spark.resource.{ResourceAllocation, ResourceID, ResourceInform
 import org.apache.spark.util.Utils
 
 private[spark] object StandaloneResourceUtils extends Logging {
+
+  private val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
 
   /**
    * A mutable resource information which provides more efficient modification on addresses.
@@ -114,9 +116,9 @@ private[spark] object StandaloneResourceUtils extends Logging {
   private def writeResourceAllocationJson[T](
       allocations: Seq[T],
       jsonFile: File): Unit = {
-    implicit val formats = DefaultFormats
-    val allocationJson = Extraction.decompose(allocations)
-    Files.write(jsonFile.toPath, compact(render(allocationJson)).getBytes())
+    import scala.collection.JavaConverters._
+    val allocationJson: JsonNode = objectMapper.valueToTree(allocations.asJava)
+    Files.write(jsonFile.toPath, allocationJson.toString.getBytes())
   }
 
   def toMutable(immutableResources: Map[String, ResourceInformation])

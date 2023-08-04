@@ -21,9 +21,9 @@ import java.time.Duration
 
 import scala.collection.JavaConverters._
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import com.google.protobuf.{Any => AnyProto, ByteString, DynamicMessage}
-import org.json4s.StringInput
-import org.json4s.jackson.JsonMethods
 
 import org.apache.spark.sql.{AnalysisException, Column, DataFrame, QueryTest, Row}
 import org.apache.spark.sql.functions.{lit, struct, typedLit}
@@ -1205,11 +1205,11 @@ class ProtobufFunctionsSuite extends QueryTest with SharedSparkSession with Prot
 
   test("Converting nested Any fields to JSON") {
     // This is a more involved version of the previous test with nested Any field inside an array.
-
+    val objectMapper = new ObjectMapper()
+    objectMapper.registerModule(DefaultScalaModule)
     // Takes json string and return a json with all the extra whitespace removed.
     def compactJson(json: String): String = {
-      val jsonValue = JsonMethods.parse(StringInput(json))
-      JsonMethods.compact(jsonValue)
+      objectMapper.valueToTree(json).toString
     }
 
     checkWithFileAndClassName("ProtoWithAnyArray") { case (name, descFilePathOpt) =>

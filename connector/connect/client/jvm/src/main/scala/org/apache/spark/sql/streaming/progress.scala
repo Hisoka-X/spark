@@ -24,18 +24,13 @@ import java.util.UUID
 import scala.collection.JavaConverters._
 import scala.util.control.NonFatal
 
-import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
+import com.fasterxml.jackson.databind.{DeserializationFeature, JsonNode, ObjectMapper}
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.module.scala.{ClassTagExtensions, DefaultScalaModule}
-import org.json4s._
-import org.json4s.JsonAST.JValue
-import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods._
 
 import org.apache.spark.annotation.Evolving
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.expressions.GenericRowWithSchema
-import org.apache.spark.sql.streaming.SafeJsonSerializer.{safeDoubleToJValue, safeMapToJValue}
 import org.apache.spark.sql.streaming.SinkProgress.DEFAULT_NUM_OUTPUT_ROWS
 
 /**
@@ -54,14 +49,16 @@ class StateOperatorProgress private[spark] (
     val numRowsDroppedByWatermark: Long,
     val numShufflePartitions: Long,
     val numStateStoreInstances: Long,
-    val customMetrics: ju.Map[String, JLong] = new ju.HashMap())
+    val customMetrics: ju.Map[String, Long] = new ju.HashMap())
     extends Serializable {
 
+  private val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+
   /** The compact JSON representation of this progress. */
-  def json: String = compact(render(jsonValue))
+  def json: String = jsonValue.toString
 
   /** The pretty (i.e. indented) JSON representation of this progress. */
-  def prettyJson: String = pretty(render(jsonValue))
+  def prettyJson: String = jsonValue.toPrettyString
 
   private[sql] def copy(
       newNumRowsUpdated: Long,
@@ -80,26 +77,27 @@ class StateOperatorProgress private[spark] (
       numStateStoreInstances = numStateStoreInstances,
       customMetrics = customMetrics)
 
-  private[sql] def jsonValue: JValue = {
-    ("operatorName" -> JString(operatorName)) ~
-      ("numRowsTotal" -> JInt(numRowsTotal)) ~
-      ("numRowsUpdated" -> JInt(numRowsUpdated)) ~
-      ("allUpdatesTimeMs" -> JInt(allUpdatesTimeMs)) ~
-      ("numRowsRemoved" -> JInt(numRowsRemoved)) ~
-      ("allRemovalsTimeMs" -> JInt(allRemovalsTimeMs)) ~
-      ("commitTimeMs" -> JInt(commitTimeMs)) ~
-      ("memoryUsedBytes" -> JInt(memoryUsedBytes)) ~
-      ("numRowsDroppedByWatermark" -> JInt(numRowsDroppedByWatermark)) ~
-      ("numShufflePartitions" -> JInt(numShufflePartitions)) ~
-      ("numStateStoreInstances" -> JInt(numStateStoreInstances)) ~
-      ("customMetrics" -> {
-        if (!customMetrics.isEmpty) {
-          val keys = customMetrics.keySet.asScala.toSeq.sorted
-          keys.map { k => k -> JInt(customMetrics.get(k).toLong): JObject }.reduce(_ ~ _)
-        } else {
-          JNothing
-        }
-      })
+  private[sql] def jsonValue: JsonNode = {
+    val node = objectMapper.createObjectNode()
+      .put("operatorName", operatorName)
+      .put("numRowsTotal", numRowsTotal)
+      .put("numRowsUpdated", numRowsUpdated)
+      .put("allUpdatesTimeMs", allUpdatesTimeMs)
+      .put("numRowsRemoved", numRowsRemoved)
+      .put("allRemovalsTimeMs", allRemovalsTimeMs)
+      .put("commitTimeMs", commitTimeMs)
+      .put("memoryUsedBytes", memoryUsedBytes)
+      .put("numRowsDroppedByWatermark", numRowsDroppedByWatermark)
+      .put("numShufflePartitions", numShufflePartitions)
+      .put("numStateStoreInstances", numStateStoreInstances)
+    if (!customMetrics.isEmpty) {
+      val keys = customMetrics.keySet.asScala.toSeq.sorted
+      node.set("customMetrics", objectMapper.valueToTree(keys.map { k => k ->
+        customMetrics.get(k) }.toMap.asJava))
+    } else {
+      node.putNull("customMetrics")
+    }
+    node
   }
 
   override def toString: String = prettyJson
@@ -158,6 +156,8 @@ class StreamingQueryProgress private[spark] (
     val observedMetrics: ju.Map[String, Row])
     extends Serializable {
 
+  private val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+
   /** The aggregate (across all sources) number of records processed in a trigger. */
   def numInputRows: Long = sources.map(_.numInputRows).sum
 
@@ -168,29 +168,32 @@ class StreamingQueryProgress private[spark] (
   def processedRowsPerSecond: Double = sources.map(_.processedRowsPerSecond).sum
 
   /** The compact JSON representation of this progress. */
-  def json: String = compact(render(jsonValue))
+  def json: String = jsonValue.toString
 
   /** The pretty (i.e. indented) JSON representation of this progress. */
-  def prettyJson: String = pretty(render(jsonValue))
+  def prettyJson: String = jsonValue.toPrettyString
 
   override def toString: String = prettyJson
 
-  private[sql] def jsonValue: JValue = {
-    ("id" -> JString(id.toString)) ~
-      ("runId" -> JString(runId.toString)) ~
-      ("name" -> JString(name)) ~
-      ("timestamp" -> JString(timestamp)) ~
-      ("batchId" -> JInt(batchId)) ~
-      ("batchDuration" -> JInt(batchDuration)) ~
-      ("numInputRows" -> JInt(numInputRows)) ~
-      ("inputRowsPerSecond" -> safeDoubleToJValue(inputRowsPerSecond)) ~
-      ("processedRowsPerSecond" -> safeDoubleToJValue(processedRowsPerSecond)) ~
-      ("durationMs" -> safeMapToJValue[JLong](durationMs, v => JInt(v.toLong))) ~
-      ("eventTime" -> safeMapToJValue[String](eventTime, s => JString(s))) ~
-      ("stateOperators" -> JArray(stateOperators.map(_.jsonValue).toList)) ~
-      ("sources" -> JArray(sources.map(_.jsonValue).toList)) ~
-      ("sink" -> sink.jsonValue) ~
-      ("observedMetrics" -> safeMapToJValue[Row](observedMetrics, row => row.jsonValue))
+  private[sql] def jsonValue: JsonNode = {
+    val node = objectMapper.createObjectNode()
+      .put("id", id.toString)
+      .put("runId", runId.toString)
+      .put("name", name)
+      .put("timestamp", timestamp)
+      .put("batchId", batchId)
+      .put("batchDuration", batchDuration)
+      .put("numInputRows", numInputRows)
+      .put("inputRowsPerSecond", inputRowsPerSecond)
+      .put("processedRowsPerSecond", processedRowsPerSecond)
+    node.set("durationMs", objectMapper.valueToTree(durationMs))
+    node.set("eventTime", objectMapper.valueToTree(eventTime))
+    node.set("stateOperators",
+      objectMapper.valueToTree(stateOperators.map(_.jsonValue).toList.asJava))
+    node.set("sources", objectMapper.valueToTree(sources.map(_.jsonValue).toList.asJava))
+    node.set("sink", sink.jsonValue)
+    node.set("observedMetrics", objectMapper.valueToTree(observedMetrics.asScala.map(kv =>
+      kv._1 -> kv._2.jsonValue).asJava))
   }
 }
 
@@ -241,29 +244,33 @@ class SourceProgress protected[spark] (
     val metrics: ju.Map[String, String] = Map[String, String]().asJava)
     extends Serializable {
 
+  private val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
+
   /** The compact JSON representation of this progress. */
-  def json: String = compact(render(jsonValue))
+  def json: String = jsonValue.toString
 
   /** The pretty (i.e. indented) JSON representation of this progress. */
-  def prettyJson: String = pretty(render(jsonValue))
+  def prettyJson: String = jsonValue.toPrettyString
 
   override def toString: String = prettyJson
 
-  private[sql] def jsonValue: JValue = {
-    ("description" -> JString(description)) ~
-      ("startOffset" -> tryParse(startOffset)) ~
-      ("endOffset" -> tryParse(endOffset)) ~
-      ("latestOffset" -> tryParse(latestOffset)) ~
-      ("numInputRows" -> JInt(numInputRows)) ~
-      ("inputRowsPerSecond" -> safeDoubleToJValue(inputRowsPerSecond)) ~
-      ("processedRowsPerSecond" -> safeDoubleToJValue(processedRowsPerSecond)) ~
-      ("metrics" -> safeMapToJValue[String](metrics, s => JString(s)))
+  private[sql] def jsonValue: JsonNode = {
+    objectMapper.createObjectNode()
+      .put("description", description)
+      .put("startOffset", tryParse(startOffset))
+      .put("endOffset", tryParse(endOffset))
+      .put("latestOffset", tryParse(latestOffset))
+      .put("numInputRows", numInputRows)
+      .put("inputRowsPerSecond", inputRowsPerSecond)
+      .put("processedRowsPerSecond", processedRowsPerSecond)
+      .set("metrics", objectMapper.valueToTree(metrics))
   }
 
   private def tryParse(json: String) = try {
-    parse(json)
+    objectMapper.valueToTree(json)
   } catch {
-    case NonFatal(e) => JString(json)
+    case NonFatal(e) => json
   }
 }
 
@@ -285,23 +292,26 @@ class SinkProgress protected[spark] (
     val metrics: ju.Map[String, String] = Map[String, String]().asJava)
     extends Serializable {
 
+  private val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
+
   /** SinkProgress without custom metrics. */
   protected[sql] def this(description: String) = {
     this(description, DEFAULT_NUM_OUTPUT_ROWS)
   }
 
   /** The compact JSON representation of this progress. */
-  def json: String = compact(render(jsonValue))
+  def json: String = jsonValue.toString
 
   /** The pretty (i.e. indented) JSON representation of this progress. */
-  def prettyJson: String = pretty(render(jsonValue))
+  def prettyJson: String = jsonValue.toPrettyString
 
   override def toString: String = prettyJson
 
-  private[sql] def jsonValue: JValue = {
-    ("description" -> JString(description)) ~
-      ("numOutputRows" -> JInt(numOutputRows)) ~
-      ("metrics" -> safeMapToJValue[String](metrics, s => JString(s)))
+  private[sql] def jsonValue: JsonNode = {
+    objectMapper.createObjectNode().put("description", description)
+      .put("numOutputRows", numOutputRows)
+      .set("metrics", objectMapper.valueToTree(metrics))
   }
 }
 
@@ -313,17 +323,4 @@ private[sql] object SinkProgress {
       numOutputRows: Option[Long],
       metrics: ju.Map[String, String] = Map[String, String]().asJava): SinkProgress =
     new SinkProgress(description, numOutputRows.getOrElse(DEFAULT_NUM_OUTPUT_ROWS), metrics)
-}
-
-private object SafeJsonSerializer {
-  def safeDoubleToJValue(value: Double): JValue = {
-    if (value.isNaN || value.isInfinity) JNothing else JDouble(value)
-  }
-
-  /** Convert map to JValue while handling empty maps. Also, this sorts the keys. */
-  def safeMapToJValue[T](map: ju.Map[String, T], valueToJValue: T => JValue): JValue = {
-    if (map.isEmpty) return JNothing
-    val keys = map.asScala.keySet.toSeq.sorted
-    keys.map { k => k -> valueToJValue(map.get(k)): JObject }.reduce(_ ~ _)
-  }
 }

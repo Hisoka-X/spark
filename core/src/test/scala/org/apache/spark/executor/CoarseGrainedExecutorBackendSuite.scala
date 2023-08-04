@@ -23,12 +23,12 @@ import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+import scala.collection.JavaConverters._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.duration._
 
-import org.json4s.{DefaultFormats, Extraction}
-import org.json4s.JsonAST.{JArray, JObject}
-import org.json4s.JsonDSL._
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito._
 import org.scalatest.concurrent.Eventually.{eventually, timeout}
@@ -50,7 +50,8 @@ import org.apache.spark.util.{SerializableBuffer, ThreadUtils, Utils}
 class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
     with LocalSparkContext with MockitoSugar {
 
-  implicit val formats = DefaultFormats
+  private val objectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+  private val nodeFactory = objectMapper.getNodeFactory
 
   test("parsing no resources") {
     val conf = new SparkConf
@@ -62,8 +63,8 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
     val backend = new CoarseGrainedExecutorBackend( env.rpcEnv, "driverurl", "1", "host1", "host1",
       4, env, None, resourceProfile)
     withTempDir { tmpDir =>
-      val testResourceArgs: JObject = ("" -> "")
-      val ja = JArray(List(testResourceArgs))
+      val testResourceArgs = nodeFactory.objectNode().put("", "")
+      val ja = nodeFactory.arrayNode().add(testResourceArgs)
       val f1 = createTempJsonFile(tmpDir, "resources", ja)
       val error = intercept[SparkException] {
         val parsedResources = backend.parseOrFindResources(Some(f1))
@@ -84,7 +85,7 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
       4, env, None, ResourceProfile.getOrCreateDefaultProfile(conf))
     withTempDir { tmpDir =>
       val ra = ResourceAllocation(EXECUTOR_GPU_ID, Seq("0", "1"))
-      val ja = Extraction.decompose(Seq(ra))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(ra).asJava)
       val f1 = createTempJsonFile(tmpDir, "resources", ja)
       val parsedResources = backend.parseOrFindResources(Some(f1))
 
@@ -121,7 +122,7 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
       val gpuArgs = ResourceAllocation(EXECUTOR_GPU_ID, Seq("0", "1"))
       val fpgaArgs =
         ResourceAllocation(EXECUTOR_FPGA_ID, Seq("f1", "f2", "f3"))
-      val ja = Extraction.decompose(Seq(gpuArgs, fpgaArgs))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(gpuArgs, fpgaArgs).asJava)
       val f1 = createTempJsonFile(tmpDir, "resources", ja)
       val parsedResources = backend.parseOrFindResources(Some(f1))
 
@@ -147,7 +148,7 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
     // not enough gpu's on the executor
     withTempDir { tmpDir =>
       val gpuArgs = ResourceAllocation(EXECUTOR_GPU_ID, Seq("0"))
-      val ja = Extraction.decompose(Seq(gpuArgs))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(gpuArgs).asJava)
       val f1 = createTempJsonFile(tmpDir, "resources", ja)
 
       val error = intercept[IllegalArgumentException] {
@@ -161,7 +162,7 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
     // missing resource on the executor
     withTempDir { tmpDir =>
       val fpga = ResourceAllocation(EXECUTOR_FPGA_ID, Seq("0"))
-      val ja = Extraction.decompose(Seq(fpga))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(fpga).asJava)
       val f1 = createTempJsonFile(tmpDir, "resources", ja)
 
       val error = intercept[SparkException] {
@@ -200,7 +201,7 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
     // executor resources < required
     withTempDir { tmpDir =>
       val gpuArgs = ResourceAllocation(EXECUTOR_GPU_ID, Seq("0", "1"))
-      val ja = Extraction.decompose(Seq(gpuArgs))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(gpuArgs).asJava)
       val f1 = createTempJsonFile(tmpDir, "resources", ja)
 
       val error = intercept[IllegalArgumentException] {
@@ -275,7 +276,7 @@ class CoarseGrainedExecutorBackendSuite extends SparkFunSuite
     val backend = new CoarseGrainedExecutorBackend(env.rpcEnv, "driverurl", "1", "host1", "host1",
       4, env, None, resourceProfile)
     val gpuArgs = ResourceAllocation(EXECUTOR_GPU_ID, Seq("0", "1"))
-    val ja = Extraction.decompose(Seq(gpuArgs))
+    val ja: JsonNode = objectMapper.valueToTree(Seq(gpuArgs).asJava)
     val f1 = createTempJsonFile(dir, "resources", ja)
     val parsedResources = backend.parseOrFindResources(Some(f1))
 

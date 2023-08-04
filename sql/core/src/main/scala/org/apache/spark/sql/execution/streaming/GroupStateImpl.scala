@@ -20,8 +20,8 @@ package org.apache.spark.sql.execution.streaming
 import java.sql.Date
 import java.util.concurrent.TimeUnit
 
-import org.json4s._
-import org.json4s.jackson.JsonMethods._
+import com.fasterxml.jackson.databind.{JsonNode, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
 import org.apache.spark.api.java.Optional
 import org.apache.spark.sql.catalyst.plans.logical.{EventTimeTimeout, NoTimeout, ProcessingTimeTimeout}
@@ -59,6 +59,9 @@ private[sql] class GroupStateImpl[S] private(
   private var updated: Boolean = false // whether value has been updated (but not removed)
   private var removed: Boolean = false // whether value has been removed
   private var timeoutTimestamp: Long = NO_TIMESTAMP
+
+  private val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
 
   // ========= Public API =========
   override def exists: Boolean = defined
@@ -181,25 +184,28 @@ private[sql] class GroupStateImpl[S] private(
     }
   }
 
-  private[sql] def json(): String = compact(render(new JObject(
-    // Constructor
-    "optionalValue" -> JNull :: // Note that optionalValue will be manually serialized.
-    "batchProcessingTimeMs" -> JLong(batchProcessingTimeMs) ::
-    "eventTimeWatermarkMs" -> JLong(eventTimeWatermarkMs) ::
-    "timeoutConf" -> JString(Utils.stripDollars(Utils.getSimpleName(timeoutConf.getClass))) ::
-    "hasTimedOut" -> JBool(hasTimedOut) ::
-    "watermarkPresent" -> JBool(watermarkPresent) ::
-
-    // Internal state
-    "defined" -> JBool(defined) ::
-    "updated" -> JBool(updated) ::
-    "removed" -> JBool(removed) ::
-    "timeoutTimestamp" -> JLong(timeoutTimestamp) :: Nil
-  )))
+  private[sql] def json(): String = {
+    val objectNode = objectMapper.createObjectNode()
+    objectNode.putNull("optionalValue")
+      .put("batchProcessingTimeMs", batchProcessingTimeMs)
+      .put("eventTimeWatermarkMs", eventTimeWatermarkMs)
+      .put("timeoutConf", Utils.stripDollars(Utils.getSimpleName(timeoutConf.getClass)))
+      .put("hasTimedOut", hasTimedOut)
+      .put("watermarkPresent", watermarkPresent)
+      .put("defined", defined)
+      .put("updated", updated)
+      .put("removed", removed)
+      .put("timeoutTimestamp", timeoutTimestamp)
+    objectNode.toString
+  }
 }
 
 
 private[sql] object GroupStateImpl {
+
+  private val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
+
   // Value used represent the lack of valid timestamp as a long
   val NO_TIMESTAMP = -1L
 
@@ -245,10 +251,9 @@ private[sql] object GroupStateImpl {
     case _ => throw new IllegalStateException("Invalid string for GroupStateTimeout: " + clazz)
   }
 
-  def fromJson[S](value: Option[S], json: JValue): GroupStateImpl[S] = {
-    implicit val formats = org.json4s.DefaultFormats
+  def fromJson[S](value: Option[S], json: JsonNode): GroupStateImpl[S] = {
 
-    val hmap = json.extract[Map[String, Any]]
+    val hmap = objectMapper.convertValue(json, classOf[Map[String, Any]])
 
     // Constructor
     val newGroupState = new GroupStateImpl[S](

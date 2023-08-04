@@ -24,10 +24,11 @@ import java.util.{Collections, LinkedHashMap => JLinkedHashMap}
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
+import com.fasterxml.jackson.core.`type`.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.commons.io.IOUtils
 import org.apache.hadoop.fs._
-import org.json4s.NoTypeHints
-import org.json4s.jackson.Serialization
 
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.SparkSession
@@ -49,7 +50,8 @@ import org.apache.spark.sql.internal.SQLConf
 class HDFSMetadataLog[T <: AnyRef : ClassTag](sparkSession: SparkSession, path: String)
   extends MetadataLog[T] with Logging {
 
-  private implicit val formats = Serialization.formats(NoTypeHints)
+  protected val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
 
   /** Needed to serialize type T into JSON when using Jackson */
   private implicit val manifest = Manifest.classType[T](implicitly[ClassTag[T]].runtimeClass)
@@ -108,7 +110,7 @@ class HDFSMetadataLog[T <: AnyRef : ClassTag](sparkSession: SparkSession, path: 
    * in the caller.
    */
   protected def serialize(metadata: T, out: OutputStream): Unit = {
-    Serialization.write(metadata, out)
+    objectMapper.writer().writeValue(out, metadata)
   }
 
   /**
@@ -118,7 +120,7 @@ class HDFSMetadataLog[T <: AnyRef : ClassTag](sparkSession: SparkSession, path: 
    */
   protected def deserialize(in: InputStream): T = {
     val reader = new InputStreamReader(in, StandardCharsets.UTF_8)
-    Serialization.read[T](reader)
+    objectMapper.readValue(reader, new TypeReference[T] {})
   }
 
   /**

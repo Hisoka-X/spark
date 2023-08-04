@@ -21,10 +21,10 @@ import java.io._
 
 import scala.collection.JavaConverters._
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
-import org.json4s._
-import org.json4s.jackson.JsonMethods._
 
 import org.apache.spark.api.python._
 import org.apache.spark.sql.Row
@@ -102,6 +102,9 @@ class ApplyInPandasWithStatePythonRunner(
     (SQLConf.ARROW_EXECUTION_MAX_RECORDS_PER_BATCH.key -> arrowMaxRecordsPerBatch.toString)
 
   private val stateRowDeserializer = stateEncoder.createDeserializer()
+
+  private val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
 
   /**
    * This method sends out the additional metadata before sending out actual data.
@@ -204,11 +207,10 @@ class ApplyInPandasWithStatePythonRunner(
         STATE_METADATA_SCHEMA_FROM_PYTHON_WORKER)
 
       stateMetadataBatch.rowIterator().asScala.take(numRows).flatMap { row =>
-        implicit val formats = org.json4s.DefaultFormats
 
         // NOTE: See ApplyInPandasWithStatePythonRunner.STATE_METADATA_SCHEMA_FROM_PYTHON_WORKER
         // for the schema.
-        val propertiesAsJson = parse(row.getUTF8String(0).toString)
+        val propertiesAsJson = objectMapper.valueToTree(row.getUTF8String(0).toString)
         val keyRowAsUnsafeAsBinary = row.getBinary(1)
         val keyRowAsUnsafe = new UnsafeRow(keySchema.fields.length)
         keyRowAsUnsafe.pointTo(keyRowAsUnsafeAsBinary, keyRowAsUnsafeAsBinary.length)

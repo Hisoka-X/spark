@@ -21,9 +21,12 @@ import java.io.File
 import java.nio.file.{Files => JavaFiles}
 import java.util.Optional
 
-import org.json4s.{DefaultFormats, Extraction}
+import scala.collection.JavaConverters._
+
+import com.fasterxml.jackson.databind.JsonNode
 
 import org.apache.spark.{LocalSparkContext, SparkConf, SparkException, SparkFunSuite}
+import org.apache.spark.SparkContextSuite.objectMapper
 import org.apache.spark.TestUtils._
 import org.apache.spark.internal.config._
 import org.apache.spark.resource.ResourceUtils._
@@ -117,11 +120,10 @@ class ResourceUtilsSuite extends SparkFunSuite
     val conf = new SparkConf
     assume(!(Utils.isWindows))
     withTempDir { dir =>
-      implicit val formats = DefaultFormats
       val fpgaAddrs = Seq("f1", "f2", "f3")
       val fpgaAllocation = ResourceAllocation(EXECUTOR_FPGA_ID, fpgaAddrs)
-      val resourcesFile = createTempJsonFile(
-        dir, "resources", Extraction.decompose(Seq(fpgaAllocation)))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(fpgaAllocation).asJava)
+      val resourcesFile = createTempJsonFile(dir, "resources", ja)
       conf.set(EXECUTOR_FPGA_ID.amountConf, "3")
       val resourcesFromFileOnly = getOrDiscoverAllResources(
         conf, SPARK_EXECUTOR_PREFIX, Some(resourcesFile))
@@ -146,11 +148,10 @@ class ResourceUtilsSuite extends SparkFunSuite
     val rpId = 1
     assume(!(Utils.isWindows))
     withTempDir { dir =>
-      implicit val formats = DefaultFormats
       val fpgaAddrs = Seq("f1", "f2", "f3")
       val fpgaAllocation = ResourceAllocation(EXECUTOR_FPGA_ID, fpgaAddrs)
-      val resourcesFile = createTempJsonFile(
-        dir, "resources", Extraction.decompose(Seq(fpgaAllocation)))
+      val ja: JsonNode = objectMapper.valueToTree(Seq(fpgaAllocation).asJava)
+      val resourcesFile = createTempJsonFile(dir, "resources", ja)
       val resourcesFromFileOnly = getOrDiscoverAllResourcesForResourceProfile(
         Some(resourcesFile),
         SPARK_EXECUTOR_PREFIX,

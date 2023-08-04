@@ -20,22 +20,24 @@ package org.apache.spark.sql.kafka010
 import scala.collection.mutable.HashMap
 import scala.util.control.NonFatal
 
+import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.apache.kafka.common.TopicPartition
-import org.json4s.NoTypeHints
-import org.json4s.jackson.Serialization
 
 /**
  * Utilities for converting Kafka related objects to and from json.
  */
 private object JsonUtils {
-  private implicit val formats = Serialization.formats(NoTypeHints)
+
+  private val objectMapper = new ObjectMapper()
+  objectMapper.registerModule(DefaultScalaModule)
 
   /**
    * Read TopicPartitions from json string
    */
   def partitions(str: String): Array[TopicPartition] = {
     try {
-      Serialization.read[Map[String, Seq[Int]]](str).flatMap {  case (topic, parts) =>
+      objectMapper.readValue(str, classOf[Map[String, Seq[Int]]]).flatMap {  case (topic, parts) =>
           parts.map { part =>
             new TopicPartition(topic, part)
           }
@@ -56,7 +58,7 @@ private object JsonUtils {
       val parts: List[Int] = result.getOrElse(tp.topic, Nil)
       result += tp.topic -> (tp.partition::parts)
     }
-    Serialization.write(result)
+    objectMapper.writeValueAsString(result)
   }
 
   /**
@@ -64,9 +66,10 @@ private object JsonUtils {
    */
   def partitionOffsets(str: String): Map[TopicPartition, Long] = {
     try {
-      Serialization.read[Map[String, Map[Int, Long]]](str).flatMap { case (topic, partOffsets) =>
+      objectMapper.reader(DeserializationFeature.USE_LONG_FOR_INTS).readValue(str,
+        classOf[Map[String, Map[String, Long]]]).flatMap { case (topic, partOffsets) =>
           partOffsets.map { case (part, offset) =>
-              new TopicPartition(topic, part) -> offset
+            new TopicPartition(topic, part.toInt) -> offset
           }
       }
     } catch {
@@ -78,10 +81,11 @@ private object JsonUtils {
 
   def partitionTimestamps(str: String): Map[TopicPartition, Long] = {
     try {
-      Serialization.read[Map[String, Map[Int, Long]]](str).flatMap { case (topic, partTimestamps) =>
-        partTimestamps.map { case (part, timestamp) =>
-          new TopicPartition(topic, part) -> timestamp
-        }
+      objectMapper.reader(DeserializationFeature.USE_LONG_FOR_INTS).readValue(str,
+        classOf[Map[String, Map[String, Long]]]).flatMap { case (topic, partTimestamps) =>
+          partTimestamps.map { case (part, timestamp) =>
+            new TopicPartition(topic, part.toInt) -> timestamp
+          }
       }
     } catch {
       case NonFatal(x) =>
@@ -108,7 +112,7 @@ private object JsonUtils {
         parts += tp.partition -> off
         result += tp.topic -> parts
     }
-    Serialization.write(result)
+    objectMapper.writeValueAsString(result)
   }
 
   def partitionTimestamps(topicTimestamps: Map[TopicPartition, Long]): String = {

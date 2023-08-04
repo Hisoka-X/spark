@@ -23,7 +23,7 @@ import java.util.function.Supplier
 
 import scala.concurrent.duration._
 
-import org.json4s.{DefaultFormats, Extraction}
+import com.fasterxml.jackson.databind.JsonNode
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.ArgumentMatchers.any
@@ -35,6 +35,7 @@ import org.scalatest.matchers.must.Matchers
 import org.scalatest.matchers.should.Matchers._
 
 import org.apache.spark.{SecurityManager, SparkConf, SparkFunSuite}
+import org.apache.spark.SparkContextSuite.objectMapper
 import org.apache.spark.TestUtils.{createTempJsonFile, createTempScriptWithExpectedOutput}
 import org.apache.spark.deploy.{Command, ExecutorState, ExternalShuffleService}
 import org.apache.spark.deploy.DeployMessages.{DriverStateChanged, ExecutorStateChanged, WorkDirCleanup}
@@ -59,8 +60,6 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
     Command("", Seq.empty, Map.empty, Seq.empty, Seq.empty, Seq(javaOpts : _*))
   }
   def conf(opts: (String, String)*): SparkConf = new SparkConf(loadDefaults = false).setAll(opts)
-
-  implicit val formats = DefaultFormats
 
   private var _worker: Worker = _
 
@@ -254,7 +253,9 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
       val gpuArgs = ResourceAllocation(WORKER_GPU_ID, Seq("0", "1"))
       val fpgaArgs =
         ResourceAllocation(WORKER_FPGA_ID, Seq("f1", "f2", "f3"))
-      val ja = Extraction.decompose(Seq(gpuArgs, fpgaArgs))
+
+      import scala.collection.JavaConverters._
+      val ja: JsonNode = objectMapper.valueToTree(Seq(gpuArgs, fpgaArgs).asJava)
       val f1 = createTempJsonFile(dir, "resources", ja)
       conf.set(SPARK_WORKER_RESOURCE_FILE.key, f1)
       conf.set(WORKER_GPU_ID.amountConf, "2")
@@ -292,7 +293,9 @@ class WorkerSuite extends SparkFunSuite with Matchers with BeforeAndAfter {
     val conf = new SparkConf()
     withTempDir { dir =>
       val gpuArgs = ResourceAllocation(WORKER_GPU_ID, Seq("0", "1"))
-      val ja = Extraction.decompose(Seq(gpuArgs))
+
+      import scala.collection.JavaConverters._
+      val ja: JsonNode = objectMapper.valueToTree(Seq(gpuArgs).asJava)
       val resourcesPath = createTempJsonFile(dir, "resources", ja)
       val scriptPath = createTempScriptWithExpectedOutput(dir, "fpgaDiscoverScript",
         """{"name": "fpga","addresses":["f1", "f2", "f3"]}""")

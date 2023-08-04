@@ -24,10 +24,9 @@ import com.fasterxml.jackson.core.{JsonEncoding, JsonGenerator}
 import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 
+private[spark] object JsonUtils {
 
-private[spark] trait JsonUtils {
-
-  protected val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
+  val mapper: ObjectMapper = new ObjectMapper().registerModule(DefaultScalaModule)
     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
 
   def toJsonString(block: JsonGenerator => Unit): String = {
@@ -39,5 +38,3 @@ private[spark] trait JsonUtils {
     new String(baos.toByteArray, StandardCharsets.UTF_8)
   }
 }
-
-private[spark] object JsonUtils extends JsonUtils
