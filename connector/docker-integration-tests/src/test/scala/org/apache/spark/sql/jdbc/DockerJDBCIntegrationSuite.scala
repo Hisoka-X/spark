@@ -234,7 +234,7 @@ abstract class DockerJDBCIntegrationSuite
   private def logContainerOutput(): Unit = {
     logInfo("\n\n===== CONTAINER LOGS FOR container Id: " + containerId + " =====")
     val logContainerCmd = docker.logContainerCmd(containerId).withStdOut(true).withStdErr(true)
-      .exec(new ResultCallback.Adapter() {
+      .exec(new ResultCallback.Adapter[Frame]() {
         override def onNext(frame: Frame): Unit = {
           logInfo(frame.toString)
         }
