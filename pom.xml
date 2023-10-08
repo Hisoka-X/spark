@@ -102,6 +102,7 @@
     <module>connector/kafka-0-10-assembly</module>
     <module>connector/kafka-0-10-sql</module>
     <module>connector/avro</module>
+    <module>connector/docker-integration-tests</module>
     <module>connector/connect/server</module>
     <module>connector/connect/common</module>
     <module>connector/connect/client/jvm</module>
@@ -201,6 +202,7 @@
     <commons-pool2.version>2.11.1</commons-pool2.version>
     <datanucleus-core.version>4.1.17</datanucleus-core.version>
     <guava.version>14.0.1</guava.version>
+    <docker-java.version>3.3.3</docker-java.version>
     <janino.version>3.1.9</janino.version>
     <!--
       Please don't upgrade the version to 3.0.0+,
@@ -1230,21 +1232,22 @@
         <scope>test</scope>
       </dependency>
       <dependency>
-        <groupId>com.spotify</groupId>
-        <artifactId>docker-client</artifactId>
-        <version>8.14.1</version>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-core</artifactId>
+        <version>${docker-java.version}</version>
         <scope>test</scope>
-        <classifier>shaded</classifier>
         <exclusions>
           <exclusion>
             <artifactId>guava</artifactId>
             <groupId>com.google.guava</groupId>
           </exclusion>
-          <exclusion>
-            <groupId>commons-logging</groupId>
-            <artifactId>commons-logging</artifactId>
-          </exclusion>
         </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-transport-zerodep</artifactId>
+        <version>${docker-java.version}</version>
+        <scope>test</scope>
       </dependency>
       <dependency>
         <groupId>com.mysql</groupId>

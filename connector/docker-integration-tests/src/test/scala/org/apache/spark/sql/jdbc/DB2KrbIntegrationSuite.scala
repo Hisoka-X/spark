@@ -21,7 +21,8 @@ import java.security.PrivilegedExceptionAction
 import java.sql.Connection
 import javax.security.auth.login.Configuration
 
-import com.spotify.docker.client.messages.{ContainerConfig, HostConfig}
+import com.github.dockerjava.api.command.CreateContainerCmd
+import com.github.dockerjava.api.model.{AccessMode, Bind, HostConfig, Volume}
 import org.apache.hadoop.security.{SecurityUtil, UserGroupInformation}
 import org.apache.hadoop.security.UserGroupInformation.AuthenticationMethod.KERBEROS
 import org.scalatest.time.SpanSugar._
@@ -66,14 +67,12 @@ class DB2KrbIntegrationSuite extends DockerKrbJDBCIntegrationSuite {
     }
 
     override def beforeContainerStart(
-        hostConfigBuilder: HostConfig.Builder,
-        containerConfigBuilder: ContainerConfig.Builder): Unit = {
+        hostConfig: HostConfig,
+        createContainerCmd: CreateContainerCmd): Unit = {
       copyExecutableResource("db2_krb_setup.sh", initDbDir, replaceIp)
 
-      hostConfigBuilder.appendBinds(
-        HostConfig.Bind.from(initDbDir.getAbsolutePath)
-          .to("/var/custom").readOnly(true).build()
-      )
+      hostConfig.withBinds(new Bind(initDbDir.getAbsolutePath,
+        new Volume("/var/custom"), AccessMode.ro))
     }
   }
 

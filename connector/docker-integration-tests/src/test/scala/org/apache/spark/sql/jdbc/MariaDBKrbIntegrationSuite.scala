@@ -19,7 +19,8 @@ package org.apache.spark.sql.jdbc
 
 import javax.security.auth.login.Configuration
 
-import com.spotify.docker.client.messages.{ContainerConfig, HostConfig}
+import com.github.dockerjava.api.command.CreateContainerCmd
+import com.github.dockerjava.api.model.{AccessMode, Bind, HostConfig, Volume}
 
 import org.apache.spark.sql.execution.datasources.jdbc.connection.SecureConnectionProvider
 import org.apache.spark.tags.DockerTest
@@ -52,17 +53,15 @@ class MariaDBKrbIntegrationSuite extends DockerKrbJDBCIntegrationSuite {
       Some("/docker-entrypoint/mariadb_docker_entrypoint.sh")
 
     override def beforeContainerStart(
-        hostConfigBuilder: HostConfig.Builder,
-        containerConfigBuilder: ContainerConfig.Builder): Unit = {
+        hostConfig: HostConfig,
+        createContainerCmd: CreateContainerCmd): Unit = {
       copyExecutableResource("mariadb_docker_entrypoint.sh", entryPointDir, replaceIp)
       copyExecutableResource("mariadb_krb_setup.sh", initDbDir, replaceIp)
 
-      hostConfigBuilder.appendBinds(
-        HostConfig.Bind.from(entryPointDir.getAbsolutePath)
-          .to("/docker-entrypoint").readOnly(true).build(),
-        HostConfig.Bind.from(initDbDir.getAbsolutePath)
-          .to("/docker-entrypoint-initdb.d").readOnly(true).build()
-      )
+      hostConfig.withBinds(
+        new Bind(entryPointDir.getAbsolutePath, new Volume("/docker-entrypoint"), AccessMode.ro),
+        new Bind(initDbDir.getAbsolutePath, new Volume("/docker-entrypoint-initdb.d"),
+          AccessMode.ro))
     }
   }
 
