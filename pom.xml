@@ -1235,12 +1235,6 @@
         <artifactId>docker-java-core</artifactId>
         <version>${docker-java.version}</version>
         <scope>test</scope>
-        <exclusions>
-          <exclusion>
-            <artifactId>guava</artifactId>
-            <groupId>com.google.guava</groupId>
-          </exclusion>
-        </exclusions>
       </dependency>
       <dependency>
         <groupId>com.github.docker-java</groupId>
